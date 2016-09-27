@@ -81,7 +81,7 @@ class Hand(object):
         print
 
         if not deck.is_empty():
-            print "Error assigning cards. Card is not empty after the operation! Exiting..."
+            print "发牌出现错误，发完牌后牌堆仍然有牌。退出中..."
             quit()
 
     def print_hand(self):
@@ -90,6 +90,159 @@ class Hand(object):
         for current_card in self.cards:
             print current_card,
         print
+
+
+class CardPlay(object):
+    def __init__(self, play_str):
+        self.cards = []
+        self.is_shunzi = False
+        self.is_3dai1 = False
+        self.is_feiji = False
+        self.is_zhadan = False
+        self.is_duizi = False
+        self.is_danzhang = False
+        self.is_banzipao = False
+        self.is_4dai2 = False
+        self.invalid = False
+
+        __switcher = {
+            '1': 10,
+            '2': 15,
+            '3': 3,
+            '4': 4,
+            '5': 5,
+            '6': 6,
+            '7': 7,
+            '8': 8,
+            '9': 9,
+            'J': 11,
+            'Q': 12,
+            'K': 13,
+            'A': 14,
+            's': 16,
+            'b': 17,
+        }
+
+        for card_chr in play_str:
+            if card_chr != '0':
+                self.cards.append(Card(__switcher.get(card_chr), Suits.clubs))
+        self.cards.sort()
+
+        length = len(self.cards)
+        if length >= 5:
+            # 检查是否为顺子
+            for i in xrange(1, length):
+                card = self.cards[i]
+                pre_card = self.cards[i-1]
+                if card.value != pre_card.value + 1 or card.value > __switcher.get('A'):
+                    break
+            else:
+                self.is_shunzi = True
+                return
+
+            # 检查是否为板子炮
+            for i in xrange(0, length-2, 2):
+                if self.cards[i] != self.cards[i+1] or self.cards[i].value + 1 != self.cards[i+2].value:
+                    break
+            else:
+                self.is_banzipao = True
+                return
+
+            # 检查是否为飞机
+            card_dict = {}
+            for card in self.cards:
+                if card.value in card_dict:
+                    card_dict[card.value] += 1
+                else:
+                    card_dict[card.value] = 1
+
+            three_count = 0
+            one_count = 0
+            four_count = 0
+            for key in card_dict:
+                if card_dict[key] == 3:
+                    three_count += 1
+                elif card_dict[key] == 4:
+                    four_count += 1
+                else:
+                    one_count += card_dict[key]
+
+            if three_count == one_count:
+                self.is_feiji = True
+                return
+
+            # 检查是否为四带二
+            if four_count * 2 == one_count:
+                self.is_4dai2 = True
+                return
+
+        elif length == 4:
+            # 检查是否为炸弹
+            if self.cards[0] == self.cards[1] == self.cards[2] == self.cards[3]:
+                self.is_zhadan = True
+                return
+
+            # 检查是否为三带一
+            elif self.cards[0] == self.cards[1] == self.cards[2] or self.cards[1] == self.cards[2] == self.cards[3]:
+                self.is_3dai1 = True
+                return
+
+        elif length == 2:
+            # 检查是否是王炸
+            if (self.cards[0].value == __switcher.get('s') and self.cards[1].value == __switcher.get('b')) or \
+                    (self.cards[0].value == __switcher.get('b') and self.cards[1].value == __switcher.get('s')):
+                self.is_zhadan = True
+                return
+
+            # 检查是否是对子
+            elif self.cards[0] == self.cards[1]:
+                self.is_duizi = True
+                return
+
+        elif length == 1:
+            # 检查是否是单张
+            self.is_danzhang = True
+            return
+
+        self.invalid = True
+
+    def validate(self, hand):
+        """检查出的牌是否合法"""
+
+        # 检查出的牌是不是基础牌型之一
+        if self.invalid:
+            return False
+
+        # 检查出的牌手中有没有
+        card_dict = {}
+        for card in hand.cards:
+            if card.value not in card_dict:
+                card_dict[card.value] = 1
+            else:
+                card_dict[card.value] += 1
+
+        for played_card in self.cards:
+            if played_card.value not in card_dict:
+                return False
+            elif card_dict[played_card.value] <= 0:
+                return False
+            else:
+                card_dict[played_card.value] -= 1
+
+        return True
+
+
+
+
+# play = CardPlay('444423')
+# print "顺子：" + str(play.is_shunzi)
+# print "飞机：" + str(play.is_feiji)
+# print "炸弹：" + str(play.is_zhadan)
+# print "三带一：" + str(play.is_3dai1)
+# print "板子炮：" + str(play.is_banzipao)
+# print "单张：" + str(play.is_danzhang)
+# print "对子：" + str(play.is_duizi)
+# print "四带二：" + str(play.is_4dai2)
 
 
 class Player(object):
@@ -107,12 +260,31 @@ class Player(object):
     def be_landlord(self, deck):
         self.hand.take_bottom(deck)
 
+    def has_no_card(self):
+        return len(self.hand.cards) == 0
+
+    def show_hand(self):
+        self.hand.print_hand()
+
+    def play(self, last_play):
+        while True:
+            cards_str = raw_input("请输入你要出的牌：")
+            current_play = CardPlay(cards_str)
+            if current_play.validate(self.hand):
+                # if current_play > last_play:
+                #     return current_play
+                print "你出的牌是合法的"
+                return current_play
+            else:
+                print "出牌不合法，重新出牌"
+
 
 class Game(object):
     def __init__(self):
         self.players = []
-        self.deck = Deck()
+        self.__deck = Deck()
         self.landlord = None
+        self.winner = None
 
     def join(self, player):
         if len(self.players) > 3:
@@ -128,21 +300,37 @@ class Game(object):
             landlord_pos = randint(0, 2)
             self.landlord = self.players[landlord_pos]
             for player in self.players:
-                player.hand = Hand(self.deck)
+                player.hand = Hand(self.__deck)
                 print "玩家" + player.name,
-                player.hand.print_hand()
+                player.show_hand()
             current_pos = landlord_pos
             for i in range(3):
-                current_pos = (current_pos + 1) % 3
                 if raw_input("玩家" + self.players[current_pos].name + "：是否抢地主？") == 'y':
-                    self.players[current_pos].be_landlord(self.deck)
+                    self.players[current_pos].be_landlord(self.__deck)
                     print "本轮地主：" + self.landlord.name
                     print "地主" + self.landlord.name,
-                    self.landlord.hand.print_hand()
+                    self.landlord.show_hand()
                     break
+                current_pos = (current_pos + 1) % 3
             else:
                 print "没有玩家选择当地主，游戏结束。请开始新一轮游戏。"
+                return
 
+            self.__main_loop()
+
+    def __main_loop(self):
+        current_player = self.landlord
+        last_play = None
+        while self.winner is None:
+            print "轮到" + current_player.name + "出牌"
+            last_play = current_player.play(last_play)
+            if current_player.has_no_card():
+                self.winner = current_player
+                if self.winner == self.landlord:
+                    print "游戏结束，地主获胜！"
+                else:
+                    print "游戏结束，农民获胜！"
+            current_player = self.players[(self.players.index(current_player) + 1) % 3]
 
 game = Game()
 cqc = Player("陈倩偲")
